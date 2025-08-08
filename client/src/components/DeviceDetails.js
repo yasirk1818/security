@@ -15,7 +15,6 @@ import {
     ListItem,
     ListItemText,
     ListItemIcon,
-    Button,
     IconButton,
     Divider,
 } from '@mui/material';
@@ -29,6 +28,9 @@ import {
     Folder,
     Refresh,
 } from '@mui/icons-material';
+
+// Naye component ko import karen
+import FileManager from './FileManager';
 
 // Socket.IO server se connection
 const socket = io('http://localhost:5000');
@@ -54,7 +56,6 @@ const DeviceDetails = () => {
     const [device, setDevice] = useState(null);
     const [smsLogs, setSmsLogs] = useState([]);
     const [callLogs, setCallLogs] = useState([]);
-    const [files, setFiles] = useState([]);
     const [location, setLocation] = useState({ latitude: 'N/A', longitude: 'N/A' });
     const [loading, setLoading] = useState(true);
     const [tabIndex, setTabIndex] = useState(0);
@@ -71,10 +72,16 @@ const DeviceDetails = () => {
             const config = { headers: { 'x-auth-token': token } };
 
             // Backend se alag alag data endpoints se data fetch karen
-            const deviceRes = await axios.get(`http://localhost:5000/api/devices/${deviceId}`, config);
-            const smsRes = await axios.get(`http://localhost:5000/api/data/${deviceId}/sms`, config);
-            const callRes = await axios.get(`http://localhost:5000/api/data/${deviceId}/calls`, config);
+            // In endpoints ko backend me banana hoga
+            // const deviceRes = await axios.get(`http://localhost:5000/api/devices/${deviceId}`, config);
+            // const smsRes = await axios.get(`http://localhost:5000/api/data/${deviceId}/sms`, config);
+            // const callRes = await axios.get(`http://localhost:5000/api/data/${deviceId}/calls`, config);
             
+            // Placeholder data for now
+            const deviceRes = { data: { deviceModel: 'Samsung S22', deviceId: deviceId, androidVersion: '12', battery: { level: 80, isCharging: false }, network: { name: 'Jazz', wifiStatus: 'Connected' }, location: { latitude: 24.8607, longitude: 67.0011 } } };
+            const smsRes = { data: [{ _id: '1', type: 'inbox', address: '+923001234567', body: 'Hello, this is a test message.', date: new Date() }] };
+            const callRes = { data: [] }; // Call logs can be added similarly
+
             setDevice(deviceRes.data);
             setSmsLogs(smsRes.data);
             setCallLogs(callRes.data);
@@ -101,7 +108,6 @@ const DeviceDetails = () => {
         // Cleanup function
         return () => {
             socket.off('locationUpdated');
-            // socket.emit('leaveRoom', deviceId); // Optional
         };
     }, [deviceId, navigate]);
 
@@ -123,13 +129,13 @@ const DeviceDetails = () => {
 
     return (
         <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-            <Paper elevation={3} sx={{ p: 3 }}>
+            <Paper elevation={3} sx={{ p: 3, overflow: 'hidden' }}>
                 <Typography variant="h4" gutterBottom>{device.deviceModel}</Typography>
                 <Typography variant="subtitle1" color="text.secondary">Device ID: {device.deviceId}</Typography>
                 <Divider sx={{ my: 2 }} />
 
                 <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-                    <Tabs value={tabIndex} onChange={handleTabChange} variant="scrollable" scrollButtons="auto">
+                    <Tabs value={tabIndex} onChange={handleTabChange} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
                         <Tab label="Info" icon={<PhoneAndroid />} iconPosition="start" />
                         <Tab label="Location" icon={<LocationOn />} iconPosition="start" />
                         <Tab label="SMS" icon={<Sms />} iconPosition="start" />
@@ -141,7 +147,7 @@ const DeviceDetails = () => {
                 {/* Info Tab */}
                 <TabPanel value={tabIndex} index={0}>
                     <Grid container spacing={2}>
-                        <Grid item xs={12} md={6}>
+                        <Grid item xs={12}>
                             <List>
                                 <ListItem>
                                     <ListItemIcon><PhoneAndroid /></ListItemIcon>
@@ -162,17 +168,20 @@ const DeviceDetails = () => {
 
                 {/* Location Tab */}
                 <TabPanel value={tabIndex} index={1}>
-                    <Typography variant="h6">Live Location</Typography>
+                    <Box display="flex" alignItems="center" mb={2}>
+                        <Typography variant="h6" sx={{ flexGrow: 1 }}>Live Location</Typography>
+                        <IconButton color="primary" onClick={() => { /* Logic to request fresh location from device */ }}>
+                            <Refresh />
+                        </IconButton>
+                    </Box>
                     <Typography>Latitude: {location.latitude}</Typography>
                     <Typography>Longitude: {location.longitude}</Typography>
-                    <IconButton color="primary" onClick={() => { /* Logic to request fresh location */ }}>
-                        <Refresh />
-                    </IconButton>
-                    <Box mt={2} sx={{ height: '400px', backgroundColor: '#e0e0e0' }}>
-                        {/* Yahan Google Map embed kiya ja sakta hai */}
+                    <Box mt={2} sx={{ height: '400px', width: '100%', backgroundColor: '#e0e0e0', borderRadius: 1 }}>
                         <iframe
+                            title="Google Maps"
                             width="100%"
                             height="100%"
+                            style={{ border: 0, borderRadius: '4px' }}
                             loading="lazy"
                             allowFullScreen
                             src={`https://www.google.com/maps/embed/v1/place?key=YOUR_GOOGLE_MAPS_API_KEY&q=${location.latitude},${location.longitude}`}>
@@ -182,15 +191,14 @@ const DeviceDetails = () => {
 
                 {/* SMS Tab */}
                 <TabPanel value={tabIndex} index={2}>
-                    <List>
+                    <List sx={{ maxHeight: 400, overflow: 'auto' }}>
                         {smsLogs.length > 0 ? smsLogs.map(log => (
                             <ListItem key={log._id}>
                                 <ListItemText
-                                    primary={`${log.type}: ${log.address}`}
+                                    primary={`${log.type === 'inbox' ? 'From' : 'To'}: ${log.address}`}
                                     secondary={<>
-                                        <Typography component="span" variant="body2">{log.body}</Typography>
-                                        <br />
-                                        <Typography component="span" variant="caption">{new Date(log.date).toLocaleString()}</Typography>
+                                        <Typography component="p" variant="body2" sx={{ wordBreak: 'break-word' }}>{log.body}</Typography>
+                                        <Typography component="span" variant="caption" color="text.secondary">{new Date(log.date).toLocaleString()}</Typography>
                                     </>}
                                 />
                             </ListItem>
@@ -200,23 +208,13 @@ const DeviceDetails = () => {
 
                 {/* Call Logs Tab */}
                 <TabPanel value={tabIndex} index={3}>
-                    {/* Call Logs ki list yahan display karen */}
+                    <Typography>Call Log functionality to be implemented.</Typography>
+                    {/* Yahan Call Logs ki list bilkul SMS ki tarah display ki jayegi */}
                 </TabPanel>
 
-                {/* File Manager Tab */}
+                {/* File Manager Tab - YAHAN NAYA COMPONENT ISTEMAL HOGA */}
                 <TabPanel value={tabIndex} index={4}>
-                    <Button variant="contained" startIcon={<Refresh />}>Refresh Files</Button>
-                    <List>
-                        {/* Files ki list yahan display karen thumbnails aur download button ke sath */}
-                        <ListItem>
-                            <ListItemIcon><Folder /></ListItemIcon>
-                            <ListItemText primary="DCIM" />
-                        </ListItem>
-                        <ListItem>
-                            <ListItemIcon><Folder /></ListItemIcon>
-                            <ListItemText primary="Downloads" />
-                        </ListItem>
-                    </List>
+                    <FileManager deviceId={deviceId} />
                 </TabPanel>
 
             </Paper>

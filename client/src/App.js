@@ -4,9 +4,9 @@ import { Box, CssBaseline } from '@mui/material';
 import LoginPage from './components/LoginPage';
 import Dashboard from './components/Dashboard';
 import DeviceDetails from './components/DeviceDetails';
-import Navbar from './components/Navbar'; // Navbar ko import karen
+import Navbar from './components/Navbar';
+import { NotificationProvider } from './context/NotificationContext'; // Provider import karen
 
-// Aek wrapper component jo location ke hisab se Navbar dikhaye ga
 const AppContent = () => {
     const location = useLocation();
     const showNavbar = location.pathname !== '/login';
@@ -23,15 +23,16 @@ const AppContent = () => {
     );
 };
 
-
 function App() {
     return (
-        <Router>
-            <CssBaseline /> {/* MUI ke default styles ke liye */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-                <AppContent />
-            </Box>
-        </Router>
+        <NotificationProvider> {/* Provider ko yahan wrap karen */}
+            <Router>
+                <CssBaseline />
+                <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+                    <AppContent />
+                </Box>
+            </Router>
+        </NotificationProvider>
     );
 }
 
